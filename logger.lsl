@@ -116,7 +116,7 @@ default {
         listener = llListen(dialog_channel, "", llDetectedKey(0), "");
         string message = "Not currently recording";
         if(active) {
-            message = "Points recorded: " + (string)total_points+" points\nMemory usage: " + (string)(100-(integer)((float)llLinksetDataAvailable()/(float)total_linkset_data_available*100)+0.5) + "%";
+            message = "Points recorded: " + (string)total_points+" points\nMemory usage: " + (string)(100-(integer)((float)llLinksetDataAvailable()/(float)total_linkset_data_available*100+0.5)) + "%";
             if(paused) {
                 message += "\n(Paused)";
             }
