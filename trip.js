@@ -45,7 +45,7 @@ function readCoordinatePairX(pair) {
 	if(format == 'hex') {
 		return parseInt(pair.substring(0, 2), 16);
 	} else if(format == 'base256') {
-		return (pair.charCodeAt(0)-32);
+		return (pair.charCodeAt(0)-0xA1);
 	}
 }
 
@@ -53,7 +53,7 @@ function readCoordinatePairY(pair) {
 	if(format == 'hex') {
 		return parseInt(pair.substring(2, 4), 16);
 	} else if(format == 'base256') {
-		return (pair.charCodeAt(1)-32);
+		return (pair.charCodeAt(1)-0xA1);
 	}
 }
 
