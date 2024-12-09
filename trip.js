@@ -1,5 +1,15 @@
+/*
+Trip logging script for Second Life
+(Path viewer)
+Copyright 2024, NovaSquirrel
+
+Copying and distribution of this file, with or without modification, are permitted in any medium without royalty, provided the copyright notice and this notice are preserved. This file is offered as-is, without any warranty.
+*/
+
 let drawnElements = [];
 let slmap;
+let format = 'hex';
+let formatCoordSize = 4;
 
 const start_icon = L.icon({
 	iconUrl: 'start_marker.png',
@@ -14,6 +24,22 @@ const end_icon = L.icon({
 	iconSize: [9, 9]
 });
 
+function readCoordinatePairX(pair) {
+	if(format == 'hex') {
+		return parseInt(pair.substring(0, 2), 16);
+	} else if(format == 'base256') {
+		return (pair.charCodeAt(0)-32);
+	}
+}
+
+function readCoordinatePairY(pair) {
+	if(format == 'hex') {
+		return parseInt(pair.substring(2, 4), 16);
+	} else if(format == 'base256') {
+		return (pair.charCodeAt(1)-32);
+	}
+}
+
 function render() {
 	slmap = slmap ?? SLMap(document.getElementById('map-container'));
 
@@ -21,23 +47,39 @@ function render() {
 	const tripCoordinates = [];
 	const tripMarkers = [];
 	for(let record of document.getElementById('tripData').value.split('\n')) {
-		record = record.split(',');
-		if(record.length < 2)
-			continue;
-		const regionX = parseInt(record[0]);
-		const regionY = parseInt(record[1]);
-		const recordCoordinates = record[2].split('!');
-		if(recordCoordinates.length == 1) { // Regular coordinate
-			for(let pairCount = 0; pairCount < recordCoordinates[0].length / 4; pairCount++) {
-				const pair = recordCoordinates[0].substring(pairCount*4, (pairCount+1)*4);
-				const pairX = parseInt(pair.substring(0, 2), 16)/256;
-				const pairY = parseInt(pair.substring(2, 4), 16)/256;
-				tripCoordinates.push([regionY+pairY, regionX+pairX]);
+		if(record.startsWith('#') || record.trim() == '') {
+			continue
+		} else if(record.startsWith('format=')) {
+			if(record == 'format=hex') {
+				format = 'hex';
+				formatCoordSize = 4;
+			} else if(record == 'format=base256') {
+				format = 'base256';
+				formatCoordSize = 2;				
+			} else {
+				console.log('Invalid data format '+format);
+				return;
 			}
-		} else if(recordCoordinates.length == 2) { // Marker
-			const pairX = parseInt(recordCoordinates[0].substring(0, 2), 16)/256;
-			const pairY = parseInt(recordCoordinates[0].substring(2, 4), 16)/256;
-			tripMarkers.push([[regionY+pairY, regionX+pairX], recordCoordinates[1]]);
+		} else if(record.startsWith('+')) { // Coordinates
+			record = record.substring(1);
+			const regionXText = record.substring(0, formatCoordSize);
+			const regionX = readCoordinatePairX(regionXText) + readCoordinatePairY(regionXText)*256;
+			const regionYText = record.substring(formatCoordSize, formatCoordSize*2);
+			const regionY = readCoordinatePairX(regionYText) + readCoordinatePairY(regionYText)*256;
+			record = record.substring(formatCoordSize*2);
+			for(let pairCount = 0; pairCount < record.length / formatCoordSize; pairCount++) {
+				const pair = record.substring(pairCount*formatCoordSize, (pairCount+1)*formatCoordSize);
+				tripCoordinates.push([regionY+readCoordinatePairY(pair)/256, regionX+readCoordinatePairX(pair)/256]);
+			}
+		} else if(record.startsWith('!')) { // Marker
+			record = record.substring(1);
+			const regionXText = record.substring(0, formatCoordSize);
+			const regionX = readCoordinatePairX(regionXText) + readCoordinatePairY(regionXText)*256;
+			const regionYText = record.substring(formatCoordSize, formatCoordSize*2);
+			const regionY = readCoordinatePairX(regionYText) + readCoordinatePairY(regionYText)*256;
+			record = record.substring(formatCoordSize*2);
+			const coords = record.substring(0, formatCoordSize);
+			tripMarkers.push([[regionY+readCoordinatePairY(coords)/256, regionX+readCoordinatePairX(coords)/256], record.substring(formatCoordSize)]);
 		}
 	}
 
