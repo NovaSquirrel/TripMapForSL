@@ -1,25 +1,43 @@
 /*
 Trip logging script for Second Life
-Copyright 2024, NovaSquirrel
+Copyright (c) 2024 NovaSquirrel
 
-Copying and distribution of this file, with or without modification, are permitted in any medium without royalty, provided the copyright notice and this notice are preserved. This file is offered as-is, without any warranty.
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 */
 #define MINIMUM_DISTANCE_REQUIRED 2.5
 #define TIMER_FREQUENCY 2
 #define MAX_RECORD_LENGTH 5000
 
-string region_name;       // used to detect when crossing into a new region
-vector last_position;     // most recent recorded point's position
-string current_record;    // region x, region y, sequence of XXYY pairs
-integer record_count = 0; // how many records are in the linkset data
-integer active = 0;       // actively recording
-integer paused = 0;       // paused recording
-integer total_points = 0; // amount of points that have been recorded
+string region_name;       // Used to detect when crossing into a new region
+vector last_position;     // Most recent recorded point's position
+string current_record;    // Region x, region y, sequence of XXYY pairs
+integer record_count = 0; // How many records are in the linkset data
+integer active = 0;       // Actively recording
+integer paused = 0;       // Paused recording
+integer total_points = 0; // Amount of points that have been recorded
+integer total_linkset_data_available; // bytes available when all data is deleted
+integer did_pause = 0;    // Set to 1 if the recording was paused, to record that
 
-integer dialog_channel;
-integer marker_channel;
-integer listener;
-integer configure_mode; // The marker input is actually for configuration
+integer dialog_channel;   // Buttons
+integer marker_channel;   // Text input
+integer listener;         // Listener handle for either channel
+integer configure_mode;   // If nonzero, the marker input is actually for configuration
 
 // Configuration
 integer timer_frequency = TIMER_FREQUENCY;
@@ -30,8 +48,26 @@ string encode_byte(integer n) {
         n = 0;
     if(n > 255)
         n = 255;
-    integer i;
     return llChar(n+32);
+}
+
+init_record(string prefix) {
+    write_current_record();
+    region_name = llGetRegionName();
+    vector corner = llGetRegionCorner();
+    integer region_x = (integer)(corner.x / 256);
+    integer region_y = (integer)(corner.y / 256);
+    current_record = prefix+encode_byte(region_x&255) + encode_byte(region_x>>8) + encode_byte(region_y&255) + encode_byte(region_y>>8);
+    if(did_pause) {
+        current_record = "-\n" + current_record;
+        did_pause = 0;
+    }
+}
+
+add_coordinate_to_record(vector coordinate) {
+    last_position = coordinate;
+    current_record += encode_byte((integer)llFloor(coordinate.x)) + encode_byte((integer)(llFloor(coordinate.y)));
+    total_points += 1;
 }
 
 write_current_record() {
@@ -46,21 +82,7 @@ write_current_record() {
     current_record = "";
 }
 
-init_record(string prefix) {
-    write_current_record();
-    region_name = llGetRegionName();
-    vector corner = llGetRegionCorner();
-    integer region_x = (integer)(corner.x / 256);
-    integer region_y = (integer)(corner.y / 256);
-    current_record = prefix+encode_byte(region_x&255) + encode_byte(region_x>>8) + encode_byte(region_y&255) + encode_byte(region_y>>8);
-}
-
-add_coordinate_to_record(vector coordinate) {
-    current_record += encode_byte((integer)llFloor(coordinate.x)) + encode_byte((integer)(llFloor(coordinate.y)));
-    total_points += 1;
-}
-
-default {    
+default {
     timer() {
         if(active == 0 || paused == 1)
             return;
@@ -73,10 +95,16 @@ default {
         vector current_position = llGetRootPosition();
         if(llSqrt(llPow(current_position.x-last_position.x, 2)+llPow(current_position.y-last_position.y, 2)) > minimum_distance_required) {
             add_coordinate_to_record(current_position);
-            last_position = current_position;
         }
     }
     
+    changed(integer change) {
+        if ((change & CHANGED_TELEPORT) && active && !paused) {
+            region_name = "";
+            did_pause = 1;
+        }
+    }
+
     state_entry() {
         dialog_channel = (integer)(llFrand(-1000000000.0) - 1000000000.0);
         marker_channel = dialog_channel + 1;
@@ -88,7 +116,7 @@ default {
         listener = llListen(dialog_channel, "", llDetectedKey(0), "");
         string message = "Not currently recording";
         if(active) {
-            message = "Points recorded: " + (string)total_points+" points";
+            message = "Points recorded: " + (string)total_points+" points\nMemory usage: " + (string)(100-(integer)((float)llLinksetDataAvailable()/(float)total_linkset_data_available*100)+0.5) + "%";
             if(paused) {
                 message += "\n(Paused)";
             }
@@ -98,7 +126,7 @@ default {
         llDialog(llDetectedKey(0), message, [
         llList2String(["Start!", "Finish"], active), 
         llList2String(["Pause", "Resume"], paused),
-        "Cancel", "Get data", "Add marker", "Configure"
+        "Cancel", "Get data", "Add marker", "Configure", "How to use"
         ], dialog_channel);
     }
     
@@ -107,19 +135,23 @@ default {
         if(channel == dialog_channel) {
             if(option == "Start!") {
                 llLinksetDataReset();
+                total_linkset_data_available = llLinksetDataAvailable();
                 region_name = "";
                 current_record = "";
                 total_points = 0;
                 record_count = 0;
                 active = 1;
                 paused = 0;
+                did_pause = 0;
                 llOwnerSay("Started recording!");
             } else if(option == "Finish") {
                 write_current_record();
                 active = 0;
                 llOwnerSay("Stopped recording at "+(string)total_points+" points!");
             } else if(option == "Pause") {
+                region_name = "";
                 paused = 1;
+                did_pause = 1;
                 llOwnerSay("Pausing");
             } else if(option == "Resume") {
                 paused = 0;
@@ -135,6 +167,8 @@ default {
                 llTextBox(id, "How frequently (in seconds) should points be recorded? Default is 2", marker_channel);
                 listener = llListen(marker_channel, "", id, "");
                 configure_mode = 1;
+            } else if(option == "How to use") {
+                llDialog(id, "Choose \"Start!\" from the menu when you'd like to start recording a trip, then \"Finish\" when you'd like to stop.\nDuring your trip you can add points of interest where you're currently standing by adding markers.\n\"Get data\" will give you a link to a URL that will show the data you recorded, as well as a URL to a tool to copy it into.\nThere may be multiple pages of data, in which case you'd copy all of them.\nSetting the recording frequency to be faster makes lines smoother, and slower allows for longer trips.", ["OK"], dialog_channel);
             }
         } else if(channel == marker_channel) {
             if(configure_mode == 0) {

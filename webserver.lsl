@@ -30,7 +30,7 @@ default {
     }
     
     changed(integer change) {
-        if (change & (CHANGED_OWNER | CHANGED_REGION | CHANGED_REGION_START | CHANGED_TELEPORT)) {
+        if (change & (CHANGED_OWNER | CHANGED_REGION | CHANGED_REGION_START)) {
             url = "";
         }
     }
