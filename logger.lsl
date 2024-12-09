@@ -23,6 +23,7 @@ SOFTWARE.
 #define MINIMUM_DISTANCE_REQUIRED 2.5
 #define TIMER_FREQUENCY 2
 #define MAX_RECORD_LENGTH 5000
+#define REGION_LOG_LENGTH 5
 
 string region_name;       // Used to detect when crossing into a new region
 vector last_position;     // Most recent recorded point's position
@@ -33,6 +34,7 @@ integer paused = 0;       // Paused recording
 integer total_points = 0; // Amount of points that have been recorded
 integer total_linkset_data_available; // bytes available when all data is deleted
 integer did_pause = 0;    // Set to 1 if the recording was paused, to record that
+list region_log;
 
 integer dialog_channel;   // Buttons
 integer marker_channel;   // Text input
@@ -48,7 +50,7 @@ string encode_byte(integer n) {
         n = 0;
     if(n > 255)
         n = 255;
-    return llChar(n+32);
+    return llChar(n+0xA1);
 }
 
 init_record(string prefix) {
@@ -103,6 +105,12 @@ default {
             region_name = "";
             did_pause = 1;
         }
+        if (change & CHANGED_REGION) {
+            region_log = [llGetRegionName()] + region_log;
+            if(llGetListLength(region_log) > REGION_LOG_LENGTH) {
+                region_log = llList2List(region_log, 0, REGION_LOG_LENGTH-1);
+            }
+        }
     }
 
     state_entry() {
@@ -126,7 +134,7 @@ default {
         llDialog(llDetectedKey(0), message, [
         llList2String(["Start!", "Finish"], active), 
         llList2String(["Pause", "Resume"], paused),
-        "Cancel", "Get data", "Add marker", "Configure", "How to use"
+        "Cancel", "Get data", "Add marker", "Configure", "How to use", "Region log"
         ], dialog_channel);
     }
     
@@ -169,6 +177,8 @@ default {
                 configure_mode = 1;
             } else if(option == "How to use") {
                 llDialog(id, "Choose \"Start!\" from the menu when you'd like to start recording a trip, then \"Finish\" when you'd like to stop.\nDuring your trip you can add points of interest where you're currently standing by adding markers.\n\"Get data\" will give you a link to a URL that will show the data you recorded, as well as a URL to a tool to copy it into.\nThere may be multiple pages of data, in which case you'd copy all of them.\nSetting the recording frequency to be faster makes lines smoother, and slower allows for longer trips.", ["OK"], dialog_channel);
+            } else if(option == "Region log") {
+                llDialog(id, "Regions you've recently been in:\n" + llList2CSV(region_log), ["OK"], dialog_channel);
             }
         } else if(channel == marker_channel) {
             if(configure_mode == 0) {
