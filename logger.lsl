@@ -174,7 +174,7 @@ default {
             if(configure_mode == 0) {
                 init_record("!");
                 add_coordinate_to_record(llGetRootPosition());
-                current_record += option;
+                current_record += llReplaceSubString(option, "\n", "<br>", 0);
                 write_current_record();
             } else if(configure_mode == 1) {
                 timer_frequency = (integer)option;
